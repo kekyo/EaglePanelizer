@@ -20,6 +20,8 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace EaglePanelizer
@@ -27,6 +29,7 @@ namespace EaglePanelizer
     public static class Program
     {
         private static XElement DupElement(
+            XElement plains,
             XElement parent,
             XElement target,
             double offsetX,
@@ -38,30 +41,37 @@ namespace EaglePanelizer
 
             // 2. Fix all XElements.
             var name = dupElement.Attribute("name");
-            foreach (var elm in dupElement.DescendantsAndSelf())
+            foreach (var elm in dupElement.DescendantsAndSelf().ToArray())
             {
-                // 2-1. Translate layer 25,26 (tName, bName) to 125, 126.
+                // 2-1. Move layer 25,26 (tName, bName) to 21, 22 (tPlace, bPlace).
                 var layer = elm.Attribute("layer");
                 if (((int?)layer == 25) || ((int?)layer == 26))
                 {
-                    layer.Value = ((int)layer + 100).ToString();
-
-                    // TODO: 2-1-2. Realize name reference.
-                    var ename = elm.Attribute("name");
-                    if ((name != null) && (elm.Name == "attribute") && ((string)ename == "NAME"))
-                    {
-                        ename.Value = name.Value;
-                    }
+                    layer.Value = ((int)layer - 4).ToString();
                 }
 
-                // 2-2. Fix element reference.
+                // 2-2. Realize NAME attribute.
+                var ename = elm.Attribute("name");
+                if ((name != null) && (elm.Name == "attribute") && ((string)ename == "NAME"))
+                {
+                    // 2-2-1. Convert attribute to text.
+                    elm.Name = "text";
+                    elm.Value = name.Value;
+                    ename.Remove();
+
+                    // 2-2-2. Move to plains.
+                    elm.Remove();
+                    plains.Add(elm);
+                }
+
+                // 2-3. Fix element reference.
                 var element = elm.Attribute("element");
                 if (element != null)
                 {
                     element.Value = element.Value + "_" + suffixNumber;
                 }
 
-                // 2-3. Calculate element offset.
+                // 2-4. Calculate element offset.
                 void TrySetOffsetValue(XElement xelm, string attributeName, double offset)
                 {
                     var xattr = xelm.Attribute(attributeName);
@@ -103,7 +113,7 @@ namespace EaglePanelizer
             // Load EAGE artwork file.
             XDocument LoadEagleBoard(string path)
             {
-                using (var stream = File.OpenRead(path))
+                using (var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
                 {
                     return XDocument.Load(stream);
                 }
@@ -163,10 +173,13 @@ namespace EaglePanelizer
             // Aggregate board signals.
             var signalLists =
                 (from drawing in document.Root.Elements("drawing")
-                    from board in drawing.Elements("board")
-                    from signals in board.Elements("signals")
-                    select new { parent = signals, list = signals.Elements().ToArray() }).
+                 from board in drawing.Elements("board")
+                 from signals in board.Elements("signals")
+                 select new { parent = signals, list = signals.Elements().ToArray() }).
                 ToArray();
+
+            // Extract first plain (Maybe only one plain).
+            var plain0 = plainItemLists.First().parent;
 
             // Main block of duplicate.
             var width = 0.0;
@@ -188,21 +201,21 @@ namespace EaglePanelizer
                     var dupPlains =
                         (from entry in plainItemLists
                          from element in entry.list
-                         select DupElement(entry.parent, element, xoffset, yoffset, count)).
+                         select DupElement(entry.parent, entry.parent, element, xoffset, yoffset, count)).
                         ToArray();
 
                     // Duplicate elements.
                     var dupElements =
                         (from entry in elementLists
                          from element in entry.list
-                         select DupElement(entry.parent, element, xoffset, yoffset, count)).
+                         select DupElement(plain0, entry.parent, element, xoffset, yoffset, count)).
                         ToArray();
 
                     // Duplicate signals.
                     var dupSignals =
                         (from entry in signalLists
                          from element in entry.list
-                         select DupElement(entry.parent, element, xoffset, yoffset, count)).
+                         select DupElement(plain0, entry.parent, element, xoffset, yoffset, count)).
                         ToArray();
 
                     Console.WriteLine($"Dup[{count}]: ({xoffset}, {yoffset})");
@@ -219,7 +232,7 @@ namespace EaglePanelizer
             Console.WriteLine($"Totally panelized: Count={count}, Size=({width}, {height}), ({minX}, {minY}) - ({minX + width}, {minY + height})");
 
             // Write new artwork file.
-            using (var stream = File.OpenWrite(panelizedPath))
+            using (var stream = new FileStream(panelizedPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             {
                 document.Save(stream);
                 stream.Flush();

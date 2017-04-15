@@ -3,6 +3,7 @@
 ## What is this?
 
 * This is simple tool for panelize EAGLE CAD artwork.
+* [Motivates from this tweets](https://twitter.com/kekyo2/status/852850454740353024) "Specify X, Y on the EAGLE just make faces with Gerber in 1 shot."
 
 ## Example
 
