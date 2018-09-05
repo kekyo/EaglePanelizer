@@ -1,7 +1,7 @@
 ﻿/////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // EaglePanelizer - EAGLE CAD artwork panelizer
-// Copyright (c) 2017 Kouji Matsui (@kekyo2)
+// Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.

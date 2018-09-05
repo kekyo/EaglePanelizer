@@ -1,7 +1,7 @@
 ﻿/////////////////////////////////////////////////////////////////////////////////////////////////
 //
 // EaglePanelizer - EAGLE CAD artwork panelizer
-// Copyright (c) 2017 Kouji Matsui (@kekyo2)
+// Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -103,6 +103,16 @@ namespace EaglePanelizer
 
         public static int Main(string[] args)
         {
+            if (args.Length < 4)
+            {
+                Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.1");
+                Console.WriteLine("Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)");
+                Console.WriteLine();
+                Console.WriteLine("usage: EaglePanelizer <width> <height> <from-path> <panelized-path>");
+                Console.WriteLine("ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd");
+                return 0;
+            }
+
             // Get arguments.
             var targetWidth = double.Parse(args[0]);
             var targetHeight = double.Parse(args[1]);

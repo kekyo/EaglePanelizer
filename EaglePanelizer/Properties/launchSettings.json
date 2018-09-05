@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "EaglePanelizer": {
+      "commandName": "Project",
+      "commandLineArgs": "100 100 BrainPadWiFi.brd B.brd"
+    }
+  }
+}

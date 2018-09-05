@@ -17,14 +17,28 @@
 
 ## How to use
 
-TODO:
+* You can see the help without some arguments:
+  * Width and height units are milli-meter.
+
+```
+D:\>EaglePanelizer.exe
+EaglePanelizer - EAGLE CAD artwork panelizer 1.1
+Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)
+
+usage: EaglePanelizer <width> <height> <from-path> <panelized-path>
+ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd
+```
 
 ## License
 
-* Copyright (c) 2017 Kouji Matsui
+* Source code copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)
 * Under Apache v2 http://www.apache.org/licenses/LICENSE-2.0
 
 ## History
 
+* 1.1:
+  * Added usage help.
+  * Support .NET Core 2.0.
+  * Upgraded to MSBuild 2.0.
 * 1.0:
   * First public release.
