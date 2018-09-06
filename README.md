@@ -37,6 +37,7 @@ ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd
 ## History
 
 * 1.1:
+  * Calculate contour with package's.
   * Added usage help.
   * Support .NET Core 2.0.
   * Upgraded to MSBuild 2.0.

@@ -20,94 +20,19 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Xml;
-using System.Xml.Linq;
 
 namespace EaglePanelizer
 {
     public static class Program
     {
-        private static XElement DupElement(
-            XElement plains,
-            XElement parent,
-            XElement target,
-            double offsetX,
-            double offsetY,
-            int suffixNumber)
-        {
-            // 1. Duplicate XElement.
-            var dupElement = XElement.Parse(target.ToString());
-
-            // 2. Fix all XElements.
-            var name = dupElement.Attribute("name");
-            foreach (var elm in dupElement.DescendantsAndSelf().ToArray())
-            {
-                // 2-1. Move layer 25,26 (tName, bName) to 21, 22 (tPlace, bPlace).
-                var layer = elm.Attribute("layer");
-                if (((int?)layer == 25) || ((int?)layer == 26))
-                {
-                    layer.Value = ((int)layer - 4).ToString();
-                }
-
-                // 2-2. Realize NAME attribute.
-                var ename = elm.Attribute("name");
-                if ((name != null) && (elm.Name == "attribute") && ((string)ename == "NAME"))
-                {
-                    // 2-2-1. Convert attribute to text.
-                    elm.Name = "text";
-                    elm.Value = name.Value;
-                    ename.Remove();
-
-                    // 2-2-2. Move to plains.
-                    elm.Remove();
-                    plains.Add(elm);
-                }
-
-                // 2-3. Fix element reference.
-                var element = elm.Attribute("element");
-                if (element != null)
-                {
-                    element.Value = element.Value + "_" + suffixNumber;
-                }
-
-                // 2-4. Calculate element offset.
-                void TrySetOffsetValue(XElement xelm, string attributeName, double offset)
-                {
-                    var xattr = xelm.Attribute(attributeName);
-                    if (xattr != null)
-                    {
-                        xattr.Value = ((double)xattr + offset).ToString();
-                    }
-                }
-
-                TrySetOffsetValue(elm, "x", offsetX);
-                TrySetOffsetValue(elm, "x1", offsetX);
-                TrySetOffsetValue(elm, "x2", offsetX);
-                TrySetOffsetValue(elm, "y", offsetY);
-                TrySetOffsetValue(elm, "y1", offsetY);
-                TrySetOffsetValue(elm, "y2", offsetY);
-            }
-
-            // 3. Fix duplicated name.
-            if (name != null)
-            {
-                name.Value = name.Value + "_" + suffixNumber;
-            }
-
-            // 4. Add to parent.
-            parent.Add(dupElement);
-
-            return dupElement;
-        }
-
         public static int Main(string[] args)
         {
+            Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.1");
+            Console.WriteLine("Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)");
+            Console.WriteLine();
+
             if (args.Length < 4)
             {
-                Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.1");
-                Console.WriteLine("Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)");
-                Console.WriteLine();
                 Console.WriteLine("usage: EaglePanelizer <width> <height> <from-path> <panelized-path>");
                 Console.WriteLine("ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd");
                 return 0;
@@ -117,60 +42,92 @@ namespace EaglePanelizer
             var targetWidth = double.Parse(args[0]);
             var targetHeight = double.Parse(args[1]);
 
-            var fromPath = args[2];
-            var panelizedPath = args[3];
+            var fromPath = Path.GetFullPath(args[2]);
+            var panelizedPath = Path.GetFullPath(args[3]);
 
-            // Load EAGE artwork file.
-            XDocument LoadEagleBoard(string path)
-            {
-                using (var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
-                {
-                    return XDocument.Load(stream);
-                }
-            }
+            // Load EAGLE artwork file.
+            var document = Utilities.LoadEagleBoard(fromPath);
 
-            var document = LoadEagleBoard(fromPath);
+            // EAGLE format is milli-meter.
+            var unit = new Unit("mm");
 
-            // TODO: Get artwork unit.
-            var unitDist =
+            // Aggregate board items.
+            var boardLists =
                 (from drawing in document.Root.Elements("drawing")
-                 from grid in drawing.Elements("grid")
-                 let ud = (string) grid.Attribute("unitdist")
-                 where ud != null
-                 select ud).
-                First();
-            var unit = new Unit(unitDist);
+                 from board in drawing.Elements("board")
+                 select board).
+                ToArray();
+
+            // Construct library package map.
+            var packageElementsList =
+                (from board in boardLists
+                 from libraries in board.Elements("libraries")
+                 from library in libraries.Elements("library")
+                 let libraryName = (string)library.Attribute("name")
+                 where !string.IsNullOrWhiteSpace(libraryName)
+                 from packages in library.Elements("packages")
+                 from package in packages.Elements("package")
+                 let packageName = (string)package.Attribute("name")
+                 where !string.IsNullOrWhiteSpace(packageName)
+                 let name = string.Format("{0}/{1}", libraryName, packageName)
+                 let list = package.Elements().ToArray()
+                 select new
+                 {
+                     name,
+                     parent = package,
+                     list = list
+                 }).
+                ToDictionary(
+                    entry => entry.name,
+                    entry => (from element in entry.list
+                              let de = DimensionElement.TryCreateFrom(element, unit)
+                              where de.HasValue
+                              select de.Value).
+                             ToArray());
+
+            // Aggregate board element items using packages.
+            var elementItemLists =
+                (from board in boardLists
+                 from elements in board.Elements("elements")
+                 from element in elements.Elements("element")
+                 let libraryName = (string)element.Attribute("library")
+                 let packageName = (string)element.Attribute("package")
+                 where !string.IsNullOrWhiteSpace(libraryName) && !string.IsNullOrWhiteSpace(packageName)
+                 let name = string.Format("{0}/{1}", libraryName, packageName)
+                 from packageElement in packageElementsList[name]
+                 let oe = packageElement.TryOffsetOf(element, unit)
+                 where oe.HasValue
+                 select oe.Value).
+                ToArray();
 
             // Aggregate board plain items.
             var plainItemLists =
-                (from drawing in document.Root.Elements("drawing")
-                 from board in drawing.Elements("board")
-                 from plain in board.Elements("plain")
-                 select new { parent = plain, list = plain.Elements().ToArray() }).
+                (from board in boardLists
+                 from plainElement in board.Elements("plain")
+                 from element in plainElement.Elements()
+                 let de = DimensionElement.TryCreateFrom(element, unit)
+                 where de.HasValue
+                 select de.Value).
                 ToArray();
 
             // Extract contour region from layer 20 (Dimension).
             var layer20Elements =
-                (from entry in plainItemLists
-                 from element in entry.list
-                 where (int?)element.Attribute("layer") == 20 
+                (from element in elementItemLists.Concat(plainItemLists)
+                 where element.Layer == 20
                  select element).
                 ToArray();
 
-            var minX = layer20Elements.Min(
-                layer20Element => unit.Value(layer20Element, "x1", 0));
-            var minY = layer20Elements.Min(
-                layer20Element => unit.Value(layer20Element, "y1", 0));
-            var maxX = layer20Elements.Max(
-                layer20Element => unit.Value(layer20Element, "x1", 0));
-            var maxY = layer20Elements.Max(
-                layer20Element => unit.Value(layer20Element, "y1", 0));
+            var minX = layer20Elements.Min(layer20Element => layer20Element.MinX());
+            var minY = layer20Elements.Min(layer20Element => layer20Element.MinY());
+            var maxX = layer20Elements.Max(layer20Element => layer20Element.MaxX());
+            var maxY = layer20Elements.Max(layer20Element => layer20Element.MaxY());
 
             // Totally size of original artwork.
             var width0 = maxX - minX;
             var height0 = maxY - minY;
 
-            Console.WriteLine($"Original board: Size=({width0}, {height0}), ({minX}, {minY}) - ({maxX}, {maxY})");
+            Console.WriteLine(
+                $"Original board: Size=({width0}, {height0}), ({minX}, {minY}) - ({maxX}, {maxY})");
 
             // Aggregate board elements.
             var elementLists =
@@ -189,7 +146,7 @@ namespace EaglePanelizer
                 ToArray();
 
             // Extract first plain (Maybe only one plain).
-            var plain0 = plainItemLists.First().parent;
+            var plain0 = plainItemLists.First().Element.Parent;
 
             // Main block of duplicate.
             var width = 0.0;
@@ -209,23 +166,25 @@ namespace EaglePanelizer
 
                     // Duplicate plain items.
                     var dupPlains =
-                        (from entry in plainItemLists
-                         from element in entry.list
-                         select DupElement(entry.parent, entry.parent, element, xoffset, yoffset, count)).
+                        (from de in plainItemLists
+                         select Utilities.DupElement(
+                             de.Element.Parent, de.Element.Parent, de.Element, xoffset, yoffset, count)).
                         ToArray();
 
                     // Duplicate elements.
                     var dupElements =
                         (from entry in elementLists
                          from element in entry.list
-                         select DupElement(plain0, entry.parent, element, xoffset, yoffset, count)).
+                         select Utilities.DupElement(
+                             plain0, entry.parent, element, xoffset, yoffset, count)).
                         ToArray();
 
                     // Duplicate signals.
                     var dupSignals =
                         (from entry in signalLists
                          from element in entry.list
-                         select DupElement(plain0, entry.parent, element, xoffset, yoffset, count)).
+                         select Utilities.DupElement(
+                             plain0, entry.parent, element, xoffset, yoffset, count)).
                         ToArray();
 
                     Console.WriteLine($"Dup[{count}]: ({xoffset}, {yoffset})");
@@ -239,14 +198,11 @@ namespace EaglePanelizer
             width += width0;
             height += height0;
 
-            Console.WriteLine($"Totally panelized: Count={count}, Size=({width}, {height}), ({minX}, {minY}) - ({minX + width}, {minY + height})");
+            Console.WriteLine(
+                $"Totally panelized: Count={count}, Size=({width}, {height}), ({minX}, {minY}) - ({minX + width}, {minY + height})");
 
             // Write new artwork file.
-            using (var stream = new FileStream(panelizedPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
-            {
-                document.Save(stream);
-                stream.Flush();
-            }
+            Utilities.SaveEagleBoard(panelizedPath, document);
 
             return 0;
         }

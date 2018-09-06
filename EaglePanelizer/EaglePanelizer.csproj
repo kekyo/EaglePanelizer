@@ -6,11 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="PGA44DIP44.brd" />
+    <Folder Include="Properties\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Properties\" />
+    <None Update="samples\BrainPadWiFi.brd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="samples\PGA44DIP44.brd">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
