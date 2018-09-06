@@ -5,6 +5,10 @@
 * This is simple tool for panelize EAGLE CAD artwork.
 * [Motivates from this tweets](https://twitter.com/kekyo2/status/852850454740353024) "Specify X, Y on the EAGLE just make faces with Gerber in 1 shot."
 
+## Download binary
+
+* [Released 1.1 (for .NET 4.5 binary)](https://github.com/kekyo/EaglePanelizer/releases/download/1.1/EaglePanelizer-1.1.zip)
+
 ## Example
 
 * Original artwork (*.brd file)
