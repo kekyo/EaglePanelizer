@@ -17,12 +17,61 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 
 namespace EaglePanelizer
 {
+    internal struct CommandLineArguments
+    {
+        public readonly string[] Arguments;
+        public readonly IReadOnlyDictionary<string, string[]> Options;
+
+        public CommandLineArguments(string[] args)
+        {
+            var options = new Dictionary<string, List<string>>();
+            var arguments = new List<string>();
+            var phase1 = true;
+            foreach (var arg in args)
+            {
+                var trim = arg.Trim();
+                if (phase1)
+                {
+                    if (trim == "-")
+                    {
+                        phase1 = false;
+                        continue;
+                    }
+
+                    if (trim.StartsWith("--"))
+                    {
+                        var index = trim.IndexOf('=');
+                        var name = (index >= 0) ? trim.Substring(2, index - 2) : trim.Substring(2);
+                        var value = (index >= 0) ? trim.Substring(index + 1) : null;
+
+                        if (!options.TryGetValue(name, out var values))
+                        {
+                            values = new List<string>();
+                            options.Add(name, values);
+                        }
+                        values.Add(value);
+
+                        continue;
+                    }
+
+                    phase1 = false;
+                }
+
+                arguments.Add(trim);
+            }
+
+            this.Options = options.ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
+            this.Arguments = arguments.ToArray();
+        }
+    }
+
     internal static class Utilities
     {
         public static XDocument LoadEagleBoard(string path)
@@ -115,5 +164,55 @@ namespace EaglePanelizer
             return dupElement;
         }
 
+        public static void AddWireElement(this XElement plain,
+            double x1, double y1, double x2, double y2, double width, int layer)
+        {
+            plain.Add(new XElement("wire",
+                new XAttribute("x1", x1),
+                new XAttribute("y1", y1),
+                new XAttribute("x2", x2),
+                new XAttribute("y2", y2),
+                new XAttribute("width", width),
+                new XAttribute("layer", layer)));
+        }
+
+        public sealed class ElementSameComparer : IEqualityComparer<XElement>
+        {
+            private readonly XElement board;
+            private readonly Unit unit;
+
+            public ElementSameComparer(XElement board, Unit unit)
+            {
+                this.board = board;
+                this.unit = unit;
+            }
+
+            public bool Equals(XElement lhs, XElement rhs)
+            {
+                var l = DimensionElement.TryCreateFrom(board, lhs, unit);
+                var r = DimensionElement.TryCreateFrom(board, rhs, unit);
+
+                if (!l.HasValue || !r.HasValue)
+                {
+                    return false;
+                }
+
+                var h =
+                    (l.Value.X1 == r.Value.X1 && l.Value.Y1 == r.Value.Y1 && l.Value.X2 == r.Value.X2 && l.Value.Y2 == r.Value.Y2) ||
+                    (l.Value.X1 == r.Value.X2 && l.Value.Y1 == r.Value.Y2 && l.Value.X2 == r.Value.X1 && l.Value.Y2 == r.Value.Y1);
+                return h;
+            }
+
+            public int GetHashCode(XElement obj)
+            {
+                var o = DimensionElement.TryCreateFrom(board, obj, unit);
+
+                return
+                    (o?.X1.GetHashCode() ?? 0) ^
+                    (o?.Y1.GetHashCode() ?? 0) ^
+                    (o?.X2.GetHashCode() ?? 0) ^
+                    (o?.Y2.GetHashCode() ?? 0);
+            }
+        }
     }
 }

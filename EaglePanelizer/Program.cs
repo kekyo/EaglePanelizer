@@ -27,11 +27,13 @@ namespace EaglePanelizer
     {
         public static int Main(string[] args)
         {
-            Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.1");
+            Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.2");
             Console.WriteLine("Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)");
             Console.WriteLine();
 
-            if (args.Length < 4)
+            var cla = new CommandLineArguments(args);
+
+            if (cla.Arguments.Length < 4)
             {
                 Console.WriteLine("usage: EaglePanelizer <width> <height> <from-path> <panelized-path>");
                 Console.WriteLine("ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd");
@@ -39,11 +41,23 @@ namespace EaglePanelizer
             }
 
             // Get arguments.
-            var targetWidth = double.Parse(args[0]);
-            var targetHeight = double.Parse(args[1]);
+            var targetWidth = double.Parse(cla.Arguments[0]);
+            var targetHeight = double.Parse(cla.Arguments[1]);
 
-            var fromPath = Path.GetFullPath(args[2]);
-            var panelizedPath = Path.GetFullPath(args[3]);
+            var fromPath = Path.GetFullPath(cla.Arguments[2]);
+            var panelizedPath = Path.GetFullPath(cla.Arguments[3]);
+
+            // Dimension layer
+            var dimensionLayer = 20;
+
+            // Vcut layer
+            var vcutLayer = 46;
+
+            // Dimension and vcut line width
+            var dimensionAndVcutLineWidth = 0.254;
+
+            // Vcut line post length
+            var vcutLinePostLength = 5.0;
 
             // Load EAGLE artwork file.
             var document = Utilities.LoadEagleBoard(fromPath);
@@ -70,17 +84,17 @@ namespace EaglePanelizer
                  let packageName = (string)package.Attribute("name")
                  where !string.IsNullOrWhiteSpace(packageName)
                  let name = string.Format("{0}/{1}", libraryName, packageName)
-                 let list = package.Elements().ToArray()
+                 let packageElements = package.Elements().ToArray()
                  select new
                  {
                      name,
-                     parent = package,
-                     list = list
+                     board,
+                     packageElements
                  }).
                 ToDictionary(
                     entry => entry.name,
-                    entry => (from element in entry.list
-                              let de = DimensionElement.TryCreateFrom(element, unit)
+                    entry => (from packageElement in entry.packageElements
+                              let de = DimensionElement.TryCreateFrom(entry.board, packageElement, unit)
                               where de.HasValue
                               select de.Value).
                              ToArray());
@@ -95,7 +109,7 @@ namespace EaglePanelizer
                  where !string.IsNullOrWhiteSpace(libraryName) && !string.IsNullOrWhiteSpace(packageName)
                  let name = string.Format("{0}/{1}", libraryName, packageName)
                  from packageElement in packageElementsList[name]
-                 let oe = packageElement.TryOffsetOf(element, unit)
+                 let oe = packageElement.TryOffsetOfOrigin(element, true)
                  where oe.HasValue
                  select oe.Value).
                 ToArray();
@@ -105,22 +119,22 @@ namespace EaglePanelizer
                 (from board in boardLists
                  from plainElement in board.Elements("plain")
                  from element in plainElement.Elements()
-                 let de = DimensionElement.TryCreateFrom(element, unit)
+                 let de = DimensionElement.TryCreateFrom(board, element, unit)
                  where de.HasValue
                  select de.Value).
                 ToArray();
 
-            // Extract contour region from layer 20 (Dimension).
-            var layer20Elements =
+            // Extract contour region from dimension layer.
+            var dimensionLayerElements =
                 (from element in elementItemLists.Concat(plainItemLists)
-                 where element.Layer == 20
+                 where element.Layer == dimensionLayer
                  select element).
                 ToArray();
 
-            var minX = layer20Elements.Min(layer20Element => layer20Element.MinX());
-            var minY = layer20Elements.Min(layer20Element => layer20Element.MinY());
-            var maxX = layer20Elements.Max(layer20Element => layer20Element.MaxX());
-            var maxY = layer20Elements.Max(layer20Element => layer20Element.MaxY());
+            var minX = dimensionLayerElements.Min(element => element.MinX());
+            var minY = dimensionLayerElements.Min(element => element.MinY());
+            var maxX = dimensionLayerElements.Max(element => element.MaxX());
+            var maxY = dimensionLayerElements.Max(element => element.MaxY());
 
             // Totally size of original artwork.
             var width0 = maxX - minX;
@@ -145,6 +159,20 @@ namespace EaglePanelizer
                  select new { parent = signals, list = signals.Elements().ToArray() }).
                 ToArray();
 
+            // Remove dimension layer elements.
+            foreach (var element in elementItemLists
+                .Concat(plainItemLists)
+                .Where(element => element.Layer == dimensionLayer))
+            {
+                element.Original.Remove();
+            }
+
+            // Reconstruct plain items without dimension layer.
+            plainItemLists =
+                plainItemLists
+                .Where(element => element.Layer != dimensionLayer)
+                .ToArray();
+
             // Extract first plain (Maybe only one plain).
             var plain0 = plainItemLists.First().Element.Parent;
 
@@ -164,11 +192,11 @@ namespace EaglePanelizer
                         continue;
                     }
 
-                    // Duplicate plain items.
+                    // Duplicate plain dupPlains
                     var dupPlains =
                         (from de in plainItemLists
                          select Utilities.DupElement(
-                             de.Element.Parent, de.Element.Parent, de.Element, xoffset, yoffset, count)).
+                            de.Element.Parent, de.Element.Parent, de.Element, xoffset, yoffset, count)).
                         ToArray();
 
                     // Duplicate elements.
@@ -197,6 +225,42 @@ namespace EaglePanelizer
 
             width += width0;
             height += height0;
+
+            // Apply contour lines (counter-clock wise)
+            plain0.AddWireElement(
+                minX, minY, minX + width, minY,
+                dimensionAndVcutLineWidth, dimensionLayer);
+            plain0.AddWireElement(
+                minX + width, minY, minX + width, minY + height,
+                dimensionAndVcutLineWidth, dimensionLayer);
+            plain0.AddWireElement(
+                minX + width, minY + height, minX, minY + height,
+                dimensionAndVcutLineWidth, dimensionLayer);
+            plain0.AddWireElement(
+                minX, minY + height, minX, minY,
+                dimensionAndVcutLineWidth, dimensionLayer);
+
+            // Apply calculated vcut lines.
+            for (var yoffset = height0; (yoffset + height0) < targetHeight; yoffset += height0)
+            {
+                plain0.AddWireElement(
+                    minX - vcutLinePostLength,
+                    minY + yoffset,
+                    minX + width + vcutLinePostLength,
+                    minY + yoffset,
+                    dimensionAndVcutLineWidth,
+                    vcutLayer);
+            }
+            for (var xoffset = width0; (xoffset + width0) < targetWidth; xoffset += width0)
+            {
+                plain0.AddWireElement(
+                    minX + xoffset,
+                    minY - vcutLinePostLength,
+                    minX + xoffset,
+                    minY + height + vcutLinePostLength,
+                    dimensionAndVcutLineWidth,
+                    vcutLayer);
+            }
 
             Console.WriteLine(
                 $"Totally panelized: Count={count}, Size=({width}, {height}), ({minX}, {minY}) - ({minX + width}, {minY + height})");

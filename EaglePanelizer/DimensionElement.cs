@@ -17,39 +17,79 @@
 //
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
+using System.Collections.Generic;
 using System.Xml.Linq;
 
 namespace EaglePanelizer
 {
     internal struct DimensionElement
     {
-        public readonly double X1;
-        public readonly double Y1;
-        public readonly double X2;
-        public readonly double Y2;
-        public readonly int? Layer;
-        public readonly XElement Element;
+        private readonly Unit unit;
 
-        private DimensionElement(double x1, double y1, double x2, double y2, int? layer, XElement element)
+        public readonly XElement Board;
+        public readonly XElement Element;
+        public readonly XElement Original;
+        public readonly XElement OffsetOf;
+
+        private DimensionElement(XElement board, XElement element, XElement original, XElement offsetOf, Unit unit)
         {
-            this.X1 = x1;
-            this.Y1 = y1;
-            this.X2 = x2;
-            this.Y2 = y2;
-            this.Layer = layer;
+            this.unit = unit;
+            this.Board = board;
             this.Element = element;
+            this.Original = original;
+            this.OffsetOf = offsetOf;
         }
 
-        public DimensionElement? TryOffsetOf(XElement element, Unit unit)
+        public string Name => (string)this.Element.Attribute("name") ?? this.Element.Name.ToString();
+        public string ParentName => (string)this.Element.Parent?.Attribute("name") ?? this.Element.Parent?.Name.ToString() ?? "unknown";
+
+        public double X1 => unit.Value(this.Element.Attribute("x1")) ?? unit.Value(this.Element.Attribute("x")).Value;
+        public double Y1 => unit.Value(this.Element.Attribute("y1")) ?? unit.Value(this.Element.Attribute("y")).Value;
+        public double X2 => unit.Value(this.Element.Attribute("x2")) ?? unit.Value(this.Element.Attribute("x")).Value;
+        public double Y2 => unit.Value(this.Element.Attribute("y2")) ?? unit.Value(this.Element.Attribute("y")).Value;
+
+        public int? Layer => (int?)this.Element.Attribute("layer");
+
+        public DimensionElement? TryOffsetOfOrigin(XElement offsetOf, bool positive)
         {
-            var x = unit.Value(element, "x");
-            var y = unit.Value(element, "y");
+            var ox = unit.Value(offsetOf, "x");
+            var oy = unit.Value(offsetOf, "y");
+
+            if (!ox.HasValue || !oy.HasValue)
+            {
+                return null;
+            }
+
+            var x1 = unit.Value(this.Original.Attribute("x1"));
+            var y1 = unit.Value(this.Original.Attribute("y1"));
+            var x2 = unit.Value(this.Original.Attribute("x2"));
+            var y2 = unit.Value(this.Original.Attribute("y2"));
+
+            var op = positive ? 1 : -1;
+
+            if (x1.HasValue && y1.HasValue && x2.HasValue && y2.HasValue)
+            {
+                var newElement = new XElement(this.Original);
+
+                newElement.Attribute("x1").Value = (x1.Value + ox * op).ToString();
+                newElement.Attribute("y1").Value = (y1.Value + oy * op).ToString();
+                newElement.Attribute("x2").Value = (x2.Value + ox * op).ToString();
+                newElement.Attribute("y2").Value = (y2.Value + oy * op).ToString();
+
+                return new DimensionElement(this.Board, newElement, this.Original, offsetOf, unit);
+            }
+
+            var x = unit.Value(this.Original.Attribute("x"));
+            var y = unit.Value(this.Original.Attribute("y"));
 
             if (x.HasValue && y.HasValue)
             {
-                return new DimensionElement(
-                    this.X1 + x.Value, this.Y1 + y.Value, this.X2 + x.Value, this.Y2 + y.Value,
-                    this.Layer, this.Element);
+                var newElement = new XElement(this.Original);
+
+                newElement.Attribute("x").Value = (x.Value + ox * op).ToString();
+                newElement.Attribute("y").Value = (y.Value + oy * op).ToString();
+
+                return new DimensionElement(this.Board, newElement, this.Original, offsetOf, unit);
             }
             else
             {
@@ -57,25 +97,24 @@ namespace EaglePanelizer
             }
         }
 
-        public static DimensionElement? TryCreateFrom(XElement element, Unit unit)
+        public static DimensionElement? TryCreateFrom(XElement board, XElement element, Unit unit)
         {
-            var x = unit.Value(element, "x");
-            var y = unit.Value(element, "y");
-            var x1 = unit.Value(element, "x1");
-            var y1 = unit.Value(element, "y1");
-            var x2 = unit.Value(element, "x2");
-            var y2 = unit.Value(element, "y2");
-            var layer = (int?)element.Attribute("layer");
+            var x1 = unit.Value(element.Attribute("x1"));
+            var y1 = unit.Value(element.Attribute("y1"));
+            var x2 = unit.Value(element.Attribute("x2"));
+            var y2 = unit.Value(element.Attribute("y2"));
+
+            if (x1.HasValue && y1.HasValue && x2.HasValue && y2.HasValue)
+            {
+                return new DimensionElement(board, element, element, null, unit);
+            }
+
+            var x = unit.Value(element.Attribute("x"));
+            var y = unit.Value(element.Attribute("y"));
 
             if (x.HasValue && y.HasValue)
             {
-                return new DimensionElement(
-                    x.Value, y.Value, x.Value, y.Value, layer, element);
-            }
-            else if (x1.HasValue && y1.HasValue && x2.HasValue && y2.HasValue)
-            {
-                return new DimensionElement(
-                    x1.Value, y1.Value, x2.Value, y2.Value, layer, element);
+                return new DimensionElement(board, element, element, null, unit);
             }
             else
             {
@@ -105,7 +144,9 @@ namespace EaglePanelizer
 
         public override string ToString()
         {
-            return string.Format("({0},{1})-({2},{3})", this.X1, this.Y1, this.X2, this.Y2);
+            return string.Format("{0}/{1}{2}: ({3},{4})-({5},{6})",
+                this.ParentName, this.Name, this.Layer.HasValue ? $"[{this.Layer}]" : string.Empty,
+                this.X1, this.Y1, this.X2, this.Y2);
         }
     }
 }

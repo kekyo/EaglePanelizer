@@ -75,5 +75,10 @@ namespace EaglePanelizer
                     return value;
             }
         }
+
+        public override string ToString()
+        {
+            return type.ToString();
+        }
     }
 }
