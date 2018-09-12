@@ -18,46 +18,98 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 using System;
-using System.IO;
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace EaglePanelizer
 {
     public static class Program
     {
+        private struct EaglePanelizerOptions
+        {
+            [Option("Force set layer number for dimension (contour)", 'd')]
+            [DefaultValue(20)]
+            public int DimensionLayer;
+
+            [Option("Force set layer number for V-Cut lines", 'v')]
+            [DefaultValue(46)]
+            public int VcutLayer;
+
+            [Option("Dimension contour and V-Cut line width")]
+            [DefaultValue(0.254)]
+            public double LineWidth;
+
+            [Option("V-Cut line post length", 'p')]
+            [DefaultValue(5.0)]
+            public double VcutPostLength;
+
+            [Option("Show this help", 'h')]
+            public bool Help;
+
+            public double TargetWidth;
+            public double TargetHeight;
+            [Required]
+            public string FromPath;
+            [Required]
+            public string PanelizedPath;
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("EaglePanelizer - EAGLE CAD artwork panelizer 1.2");
             Console.WriteLine("Copyright (c) 2017-2018 Kouji Matsui (@kozy_kekyo)");
             Console.WriteLine();
 
-            var cla = new CommandLineArguments(args);
+            var extractor = new CommandLineExtractor<EaglePanelizerOptions>();
 
-            if (cla.Arguments.Length < 4)
+            try
             {
-                Console.WriteLine("usage: EaglePanelizer <width> <height> <from-path> <panelized-path>");
+                var options = extractor.Extract(args);
+                if (options.Help)
+                {
+                    extractor.WriteUsages(Console.Out);
+                    return 0;
+                }
+
+                return Execute(options);
+            }
+            catch (CommandLineArgumentException ex)
+            {
+                Console.WriteLine(ex.Message);
+                Console.WriteLine();
+                extractor.WriteUsages(Console.Out);
                 Console.WriteLine("ex: EaglePanelizer 100 100 pga44dip44.brd panelized.brd");
                 return 0;
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+                return Marshal.GetHRForException(ex);
+            }
+        }
 
+        private static int Execute(EaglePanelizerOptions options)
+        {
             // Get arguments.
-            var targetWidth = double.Parse(cla.Arguments[0]);
-            var targetHeight = double.Parse(cla.Arguments[1]);
+            var targetWidth = options.TargetWidth;
+            var targetHeight = options.TargetHeight;
 
-            var fromPath = Path.GetFullPath(cla.Arguments[2]);
-            var panelizedPath = Path.GetFullPath(cla.Arguments[3]);
+            var fromPath = options.FromPath;
+            var panelizedPath = options.PanelizedPath;
 
             // Dimension layer
-            var dimensionLayer = 20;
+            var dimensionLayer = options.DimensionLayer;
 
             // Vcut layer
-            var vcutLayer = 46;
+            var vcutLayer = options.VcutLayer;
 
             // Dimension and vcut line width
-            var dimensionAndVcutLineWidth = 0.254;
+            var dimensionAndVcutLineWidth = options.LineWidth;
 
             // Vcut line post length
-            var vcutLinePostLength = 5.0;
+            var vcutLinePostLength = options.VcutPostLength;
 
             // Load EAGLE artwork file.
             var document = Utilities.LoadEagleBoard(fromPath);

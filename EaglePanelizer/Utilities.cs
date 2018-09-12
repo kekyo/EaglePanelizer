@@ -24,54 +24,6 @@ using System.Xml.Linq;
 
 namespace EaglePanelizer
 {
-    internal struct CommandLineArguments
-    {
-        public readonly string[] Arguments;
-        public readonly IReadOnlyDictionary<string, string[]> Options;
-
-        public CommandLineArguments(string[] args)
-        {
-            var options = new Dictionary<string, List<string>>();
-            var arguments = new List<string>();
-            var phase1 = true;
-            foreach (var arg in args)
-            {
-                var trim = arg.Trim();
-                if (phase1)
-                {
-                    if (trim == "-")
-                    {
-                        phase1 = false;
-                        continue;
-                    }
-
-                    if (trim.StartsWith("--"))
-                    {
-                        var index = trim.IndexOf('=');
-                        var name = (index >= 0) ? trim.Substring(2, index - 2) : trim.Substring(2);
-                        var value = (index >= 0) ? trim.Substring(index + 1) : null;
-
-                        if (!options.TryGetValue(name, out var values))
-                        {
-                            values = new List<string>();
-                            options.Add(name, values);
-                        }
-                        values.Add(value);
-
-                        continue;
-                    }
-
-                    phase1 = false;
-                }
-
-                arguments.Add(trim);
-            }
-
-            this.Options = options.ToDictionary(entry => entry.Key, entry => entry.Value.ToArray());
-            this.Arguments = arguments.ToArray();
-        }
-    }
-
     internal static class Utilities
     {
         public static XDocument LoadEagleBoard(string path)
