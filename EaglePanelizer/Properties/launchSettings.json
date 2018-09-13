@@ -2,7 +2,7 @@
   "profiles": {
     "EaglePanelizer": {
       "commandName": "Project",
-      "commandLineArgs": "--help 100 100 samples\\BrainPadWiFi.brd panelized.brd"
+      "commandLineArgs": "--vcut-indicator 100 100 samples\\BrainPadWiFi.brd panelized.brd"
     }
   }
 }

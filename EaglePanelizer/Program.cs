@@ -45,6 +45,9 @@ namespace EaglePanelizer
             [DefaultValue(5.0)]
             public double VcutPostLength;
 
+            [Option("Draw 'V-Cut' indicator", 'i')]
+            public bool VcutIndicator;
+
             [Option("Show this help", 'h')]
             public bool Help;
 
@@ -55,6 +58,8 @@ namespace EaglePanelizer
             [Required]
             public string PanelizedPath;
         }
+
+        //////////////////////////////////////////////
 
         public static int Main(string[] args)
         {
@@ -92,27 +97,8 @@ namespace EaglePanelizer
 
         private static int Execute(EaglePanelizerOptions options)
         {
-            // Get arguments.
-            var targetWidth = options.TargetWidth;
-            var targetHeight = options.TargetHeight;
-
-            var fromPath = options.FromPath;
-            var panelizedPath = options.PanelizedPath;
-
-            // Dimension layer
-            var dimensionLayer = options.DimensionLayer;
-
-            // Vcut layer
-            var vcutLayer = options.VcutLayer;
-
-            // Dimension and vcut line width
-            var dimensionAndVcutLineWidth = options.LineWidth;
-
-            // Vcut line post length
-            var vcutLinePostLength = options.VcutPostLength;
-
             // Load EAGLE artwork file.
-            var document = Utilities.LoadEagleBoard(fromPath);
+            var document = Utilities.LoadEagleBoard(options.FromPath);
 
             // EAGLE format is milli-meter.
             var unit = new Unit("mm");
@@ -179,7 +165,7 @@ namespace EaglePanelizer
             // Extract contour region from dimension layer.
             var dimensionLayerElements =
                 (from element in elementItemLists.Concat(plainItemLists)
-                 where element.Layer == dimensionLayer
+                 where element.Layer == options.DimensionLayer
                  select element).
                 ToArray();
 
@@ -214,7 +200,7 @@ namespace EaglePanelizer
             // Remove dimension layer elements.
             foreach (var element in elementItemLists
                 .Concat(plainItemLists)
-                .Where(element => element.Layer == dimensionLayer))
+                .Where(element => element.Layer == options.DimensionLayer))
             {
                 element.Original.Remove();
             }
@@ -222,7 +208,7 @@ namespace EaglePanelizer
             // Reconstruct plain items without dimension layer.
             plainItemLists =
                 plainItemLists
-                .Where(element => element.Layer != dimensionLayer)
+                .Where(element => element.Layer != options.DimensionLayer)
                 .ToArray();
 
             // Extract first plain (Maybe only one plain).
@@ -234,9 +220,9 @@ namespace EaglePanelizer
             var count = 1;
 
             // Limit duplicates from arguments (targetWidth, targetHeight)
-            for (var yoffset = 0.0; (yoffset + height0) < targetHeight; yoffset += height0)
+            for (var yoffset = 0.0; (yoffset + height0) < options.TargetHeight; yoffset += height0)
             {
-                for (var xoffset = 0.0; (xoffset + width0) < targetWidth; xoffset += width0)
+                for (var xoffset = 0.0; (xoffset + width0) < options.TargetWidth; xoffset += width0)
                 {
                     // Ignore original artwork position.
                     if ((xoffset == 0) && (yoffset == 0))
@@ -281,44 +267,69 @@ namespace EaglePanelizer
             // Apply contour lines (counter-clock wise)
             plain0.AddWireElement(
                 minX, minY, minX + width, minY,
-                dimensionAndVcutLineWidth, dimensionLayer);
+                options.LineWidth, options.DimensionLayer);
             plain0.AddWireElement(
                 minX + width, minY, minX + width, minY + height,
-                dimensionAndVcutLineWidth, dimensionLayer);
+                options.LineWidth, options.DimensionLayer);
             plain0.AddWireElement(
                 minX + width, minY + height, minX, minY + height,
-                dimensionAndVcutLineWidth, dimensionLayer);
+                options.LineWidth, options.DimensionLayer);
             plain0.AddWireElement(
                 minX, minY + height, minX, minY,
-                dimensionAndVcutLineWidth, dimensionLayer);
+                options.LineWidth, options.DimensionLayer);
 
             // Apply calculated vcut lines.
-            for (var yoffset = height0; (yoffset + height0) < targetHeight; yoffset += height0)
+            for (var yoffset = height0; (yoffset + height0) < options.TargetHeight; yoffset += height0)
             {
                 plain0.AddWireElement(
-                    minX - vcutLinePostLength,
+                    minX - options.VcutPostLength,
                     minY + yoffset,
-                    minX + width + vcutLinePostLength,
+                    minX + width + options.VcutPostLength,
                     minY + yoffset,
-                    dimensionAndVcutLineWidth,
-                    vcutLayer);
+                    options.LineWidth,
+                    options.VcutLayer);
             }
-            for (var xoffset = width0; (xoffset + width0) < targetWidth; xoffset += width0)
+            for (var xoffset = width0; (xoffset + width0) < options.TargetWidth; xoffset += width0)
             {
                 plain0.AddWireElement(
                     minX + xoffset,
-                    minY - vcutLinePostLength,
+                    minY - options.VcutPostLength,
                     minX + xoffset,
-                    minY + height + vcutLinePostLength,
-                    dimensionAndVcutLineWidth,
-                    vcutLayer);
+                    minY + height + options.VcutPostLength,
+                    options.LineWidth,
+                    options.VcutLayer);
+            }
+
+            // Apply vcut indicators
+            if (options.VcutIndicator)
+            {
+                for (var yoffset = height0; (yoffset + height0) < options.TargetHeight; yoffset += height0)
+                {
+                    plain0.AddVectorTextElement(
+                        minX + width + 2.0,
+                        minY + yoffset + 1.0,
+                        1.0,
+                        10,
+                        options.VcutLayer,
+                        "vcut");
+                }
+                for (var xoffset = width0; (xoffset + width0) < options.TargetWidth; xoffset += width0)
+                {
+                    plain0.AddVectorTextElement(
+                        minX + xoffset + 1.0,
+                        minY + height + 2.0,
+                        1.0,
+                        10,
+                        options.VcutLayer,
+                        "vcut");
+                }
             }
 
             Console.WriteLine(
                 $"Totally panelized: Count={count}, Size=({width}, {height}), ({minX}, {minY}) - ({minX + width}, {minY + height})");
 
             // Write new artwork file.
-            Utilities.SaveEagleBoard(panelizedPath, document);
+            Utilities.SaveEagleBoard(options.PanelizedPath, document);
 
             return 0;
         }

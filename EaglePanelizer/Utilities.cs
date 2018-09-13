@@ -128,6 +128,19 @@ namespace EaglePanelizer
                 new XAttribute("layer", layer)));
         }
 
+        public static void AddVectorTextElement(this XElement plain,
+            double x, double y, double size, int ratio, int layer, string text)
+        {
+            plain.Add(new XElement("text",
+                new XAttribute("x", x),
+                new XAttribute("y", y),
+                new XAttribute("size", size),
+                new XAttribute("layer", layer),
+                new XAttribute("font", "vector"),
+                new XAttribute("ratio", ratio),
+                text));
+        }
+
         public sealed class ElementSameComparer : IEqualityComparer<XElement>
         {
             private readonly XElement board;
