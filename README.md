@@ -7,7 +7,7 @@
 
 ## Download binary
 
-* [Released 1.1 (for .NET 4.5 binary)](https://github.com/kekyo/EaglePanelizer/releases/download/1.1/EaglePanelizer-1.1.zip)
+* [Released 1.2 (for .NET 4.5 binary)](https://github.com/kekyo/EaglePanelizer/releases/download/1.2/EaglePanelizer-1.2.zip)
 
 ## Example
 
